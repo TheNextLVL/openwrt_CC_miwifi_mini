@@ -1,0 +1,145 @@
+From aa92b9a1ce4044821bfeda59953ef555b5c404e0 Mon Sep 17 00:00:00 2001
+From: Patrick Chen <patrick.cw.chen@ubeeinteractive.com>
+Date: Fri, 4 Sep 2015 16:30:34 +0800
+Subject: [PATCH] mt7620 : Fix iwpriv command get_mac_table
+
+---
+ src/common/cmm_info.c |  109 ++++---------------------------------------------
+ 1 file changed, 7 insertions(+), 102 deletions(-)
+
+--- a/src/common/cmm_info.c
++++ b/src/common/cmm_info.c
+@@ -3898,112 +3898,14 @@ VOID RTMPIoctlGetMacTable(
+ 	IN RTMP_IOCTL_INPUT_STRUCT *wrq)
+ {
+ 	INT i;
+-/*	RT_802_11_MAC_TABLE MacTab;*/
+-	RT_802_11_MAC_TABLE *pMacTab = NULL;
+-	RT_802_11_MAC_ENTRY *pDst;
+ 	MAC_TABLE_ENTRY *pEntry;
+ 	char *msg;
+-#ifdef DPA_S //yiwei
+-	UCHAR	index;
+-	BOOLEAN	bFound;
+-#endif /* DPA_S */
+-
+-	/* allocate memory */
+-	os_alloc_mem(NULL, (UCHAR **)&pMacTab, sizeof(RT_802_11_MAC_TABLE));
+-	if (pMacTab == NULL)
+-	{
+-		DBGPRINT(RT_DEBUG_ERROR, ("%s: Allocate memory fail!!!\n", __FUNCTION__));
+-		return;
+-	}
+ 
+-	NdisZeroMemory(pMacTab, sizeof(RT_802_11_MAC_TABLE));
+-	pMacTab->Num = 0;
+-	for (i=0; i<MAX_LEN_OF_MAC_TABLE; i++)
+-	{
+-		pEntry = &(pAd->MacTab.Content[i]);
+-
+-#ifdef DPA_S
+-		if ((IS_P2P_GO_ENTRY(pEntry) || IS_P2P_CLI_ENTRY(pEntry)) 
+-			&& (pEntry->PortSecured == WPA_802_1X_PORT_SECURED))
+-#else /* DPA_S */
+-		if (IS_ENTRY_CLIENT(pEntry) && (pEntry->Sst == SST_ASSOC))
+-#endif /* !DPA_S */
+-		{
+-			pDst = &pMacTab->Entry[pMacTab->Num];
+-
+-#ifdef DPA_S //yiwei
+-			bFound = FALSE;
+-			if (IS_P2P_GO_ENTRY(pEntry) || IS_P2P_CLI_ENTRY(pEntry))
+-			{
+-				index = P2pGroupTabSearch(pAd, pEntry->Addr);
+-				if(index != P2P_NOT_FOUND)
+-					bFound = TRUE;
+-			}
+-
+-			if(bFound)
+-			{
+-				RTMPMoveMemory(&(pDst->DeviceName[0]), &pAd->P2pTable.Client[index].DeviceName[0], pAd->P2pTable.Client[index].DeviceNameLen);
+-				pDst->DeviceNameLen = pAd->P2pTable.Client[index].DeviceNameLen;
+-				pDst->DeviceName[pDst->DeviceNameLen]=0x0;
+-			}
+-			else
+-			{
+-				pDst->DeviceNameLen = 0;
+-			}
+-#endif /* DPA_S */
+-
+-			pDst->ApIdx = (UCHAR)pEntry->apidx;
+-			COPY_MAC_ADDR(pDst->Addr, &pEntry->Addr);
+-			pDst->Aid = (UCHAR)pEntry->Aid;
+-			pDst->Psm = pEntry->PsMode;
+-#ifdef DOT11_N_SUPPORT
+-			pDst->MimoPs = pEntry->MmpsMode;
+-#endif /* DOT11_N_SUPPORT */
+-
+-			/* Fill in RSSI per entry*/
+-			pDst->AvgRssi0 = pEntry->RssiSample.AvgRssi0;
+-			pDst->AvgRssi1 = pEntry->RssiSample.AvgRssi1;
+-			pDst->AvgRssi2 = pEntry->RssiSample.AvgRssi2;
+-
+-			/* the connected time per entry*/
+-			pDst->ConnectedTime = pEntry->StaConnectTime;
+-			pDst->TxRate.word = pEntry->HTPhyMode.word;
+-									
+-#ifdef RTMP_RBUS_SUPPORT
+-			pDst->LastRxRate = pEntry->LastRxRate;
+-#if defined(RT2883) || defined(RT3883)
+-			if (IS_RT2883(pAd) || IS_RT3883(pAd))
+-			{
+-				pDst->StreamSnr[0] = pEntry->BF_SNR[0];
+-				pDst->StreamSnr[1] = pEntry->BF_SNR[1];
+-				pDst->StreamSnr[2] = pEntry->BF_SNR[2];
+-#ifdef TXBF_SUPPORT
+-				pDst->SoundingRespSnr[0] = pEntry->sndg0Snr0;
+-				pDst->SoundingRespSnr[1] = pEntry->sndg0Snr1;
+-				pDst->SoundingRespSnr[2] = pEntry->sndg0Snr2;
+-#endif /* TXBF_SUPPORT */
+-			}
+-#endif /* defined(RT2883) || defined(RT3883) */
+-/*			pDst->TxPER = pEntry->SaveTxPER; */
+-#endif /* RTMP_RBUS_SUPPORT */
+-									
+-			pMacTab->Num += 1;
+-		}
+-	}
+-
+-	wrq->u.data.length = sizeof(RT_802_11_MAC_TABLE);
+-	if (copy_to_user(wrq->u.data.pointer, pMacTab, wrq->u.data.length))
+-	{
+-		DBGPRINT(RT_DEBUG_TRACE, ("%s: copy_to_user() fail\n", __FUNCTION__));
+-	}
+-
+-
+-/*	msg = kmalloc(sizeof(CHAR)*(MAX_LEN_OF_MAC_TABLE*MAC_LINE_LEN), MEM_ALLOC_FLAG);*/
+ 	os_alloc_mem(NULL, (UCHAR **)&msg, sizeof(CHAR)*(MAX_LEN_OF_MAC_TABLE*MAC_LINE_LEN));
+ 	if (msg == NULL)
+ 	{
+ 		DBGPRINT(RT_DEBUG_ERROR, ("%s():Alloc memory failed\n", __FUNCTION__));
+-		goto LabelOK;
++		return;
+ 	}
+ 	memset(msg, 0 ,MAX_LEN_OF_MAC_TABLE*MAC_LINE_LEN );
+ 	sprintf(msg,"%s","\n");
+@@ -4040,13 +3942,16 @@ VOID RTMPIoctlGetMacTable(
+ 	} 
+ 	/* for compatible with old API just do the printk to console*/
+ 
++	wrq->u.data.length = strlen(msg);
++	if (copy_to_user(wrq->u.data.pointer, msg, wrq->u.data.length))
++	{
++		DBGPRINT(RT_DEBUG_OFF, ("%s", msg));
++	}
++
+ 	DBGPRINT(RT_DEBUG_TRACE, ("%s", msg));
+ /*	kfree(msg);*/
+ 	os_free_mem(NULL, msg);
+ 
+-LabelOK:
+-	if (pMacTab != NULL)
+-		os_free_mem(NULL, pMacTab);
+ }
+ #define	ASSO_MAC_LINE_LEN	(1+19+4+4+4+4+8+7+7+7+10+6+6+6+6+7+7+1)
+ 

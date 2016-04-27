@@ -1,0 +1,16 @@
+--- a/src/os/linux/rt_rbus_pci_drv.c
++++ b/src/os/linux/rt_rbus_pci_drv.c
+@@ -776,6 +776,13 @@ static void ac0_dma_done_tasklet(unsigne
+ }
+ 
+ 
++#ifdef RALINK_ATE
++static void ate_ac0_dma_done_tasklet(unsigned long data)
++{
++	return;
++}
++#endif /* RALINK_ATE */
++
+ 
+ #ifdef UAPSD_SUPPORT
+ /*

@@ -1,0 +1,100 @@
+From e6f6c78503bb622ee5f4fc6459077fbabfab394a Mon Sep 17 00:00:00 2001
+From: Patrick Chen <patrick.cw.chen@ubeeinteractive.com>
+Date: Fri, 4 Sep 2015 11:22:28 +0800
+Subject: [PATCH] Fix RTMPIoctlGetMacTable for iwpriv command get_mac_table
+
+---
+ src/common/cmm_info.c |   64 +++++--------------------------------------------
+ 1 file changed, 6 insertions(+), 58 deletions(-)
+
+--- a/src/common/cmm_info.c
++++ b/src/common/cmm_info.c
+@@ -2302,68 +2302,14 @@ VOID RTMPIoctlGetMacTable(
+ 	IN RTMP_IOCTL_INPUT_STRUCT *wrq)
+ {
+ 	INT i;
+-/*	RT_802_11_MAC_TABLE MacTab;*/
+-	RT_802_11_MAC_TABLE *pMacTab = NULL;
+-	RT_802_11_MAC_ENTRY *pDst;
+ 	MAC_TABLE_ENTRY *pEntry;
+ 	char *msg;
+ 
+-	/* allocate memory */
+-	os_alloc_mem(NULL, (UCHAR **)&pMacTab, sizeof(RT_802_11_MAC_TABLE));
+-	if (pMacTab == NULL)
+-	{
+-		DBGPRINT(RT_DEBUG_ERROR, ("%s: Allocate memory fail!!!\n", __FUNCTION__));
+-		return;
+-	}
+-
+-	NdisZeroMemory(pMacTab, sizeof(RT_802_11_MAC_TABLE));
+-	pMacTab->Num = 0;
+-	for (i=0; i<MAX_LEN_OF_MAC_TABLE; i++)
+-	{
+-		pEntry = &(pAd->MacTab.Content[i]);
+-
+-		if (IS_ENTRY_CLIENT(pEntry) && (pEntry->Sst == SST_ASSOC))
+-		{
+-			pDst = &pMacTab->Entry[pMacTab->Num];
+-
+-
+-			pDst->ApIdx = (UCHAR)pEntry->apidx;
+-			COPY_MAC_ADDR(pDst->Addr, &pEntry->Addr);
+-			pDst->Aid = (UCHAR)pEntry->Aid;
+-			pDst->Psm = pEntry->PsMode;
+-#ifdef DOT11_N_SUPPORT
+-			pDst->MimoPs = pEntry->MmpsMode;
+-#endif /* DOT11_N_SUPPORT */
+-
+-			/* Fill in RSSI per entry*/
+-			pDst->AvgRssi0 = pEntry->RssiSample.AvgRssi0;
+-			pDst->AvgRssi1 = pEntry->RssiSample.AvgRssi1;
+-			pDst->AvgRssi2 = pEntry->RssiSample.AvgRssi2;
+-
+-			/* the connected time per entry*/
+-			pDst->ConnectedTime = pEntry->StaConnectTime;
+-			pDst->TxRate.word = pEntry->HTPhyMode.word;
+-									
+-#ifdef RTMP_RBUS_SUPPORT
+-			pDst->LastRxRate = pEntry->LastRxRate;
+-/*			pDst->TxPER = pEntry->SaveTxPER; */
+-#endif /* RTMP_RBUS_SUPPORT */
+-									
+-			pMacTab->Num += 1;
+-		}
+-	}
+-
+-	wrq->u.data.length = sizeof(RT_802_11_MAC_TABLE);
+-	if (copy_to_user(wrq->u.data.pointer, pMacTab, wrq->u.data.length))
+-	{
+-		DBGPRINT(RT_DEBUG_TRACE, ("%s: copy_to_user() fail\n", __FUNCTION__));
+-	}
+-
+ 	os_alloc_mem(NULL, (UCHAR **)&msg, sizeof(CHAR)*(MAX_LEN_OF_MAC_TABLE*MAC_LINE_LEN));
+ 	if (msg == NULL)
+ 	{
+ 		DBGPRINT(RT_DEBUG_ERROR, ("%s():Alloc memory failed\n", __FUNCTION__));
+-		goto LabelOK;
++		return;
+ 	}
+ 	memset(msg, 0 ,MAX_LEN_OF_MAC_TABLE*MAC_LINE_LEN );
+ 	sprintf(msg,"%s","\n");
+@@ -2392,13 +2338,15 @@ VOID RTMPIoctlGetMacTable(
+ 		}
+ 	} 
+ 	/* for compatible with old API just do the printk to console*/
++	wrq->u.data.length = strlen(msg);
++	if (copy_to_user(wrq->u.data.pointer, msg, wrq->u.data.length))
++	{
++		DBGPRINT(RT_DEBUG_OFF, ("%s", msg));
++	}
+ 
+ 	DBGPRINT(RT_DEBUG_TRACE, ("%s", msg));
+ 	os_free_mem(NULL, msg);
+ 
+-LabelOK:
+-	if (pMacTab != NULL)
+-		os_free_mem(NULL, pMacTab);
+ }
+ 
+ #if defined(INF_AR9) || defined(BB_SOC)
